@@ -1,13 +1,13 @@
 
 from pydantic import Field, validator
 from typing import List, Optional, Union, Literal
-from sdks.novavision.src.base.model import Package, Image, Inputs, Configs, Outputs, Response, Request, Output, Input, Config
+from sdks.novavision.src.base.model import Package, Inputs, Configs, Outputs, Response, Request, Output, Input, Config, Image
 
 
 class InputImage(Input):
     name: Literal["inputImage"] = "inputImage"
-    value: Union[List[Image], Image]
-    type: str = "object"
+    value: Union[List[Image],Image]
+    type: str  = "object"
 
     @validator("type", pre=True, always=True)
     def set_type_based_on_value(cls, value, values):
@@ -16,110 +16,145 @@ class InputImage(Input):
             return "object"
         elif isinstance(value, list):
             return "list"
-
     class Config:
-        title = "Image"
+        title="Image"
 
 
 class OutputImage(Output):
     name: Literal["outputImage"] = "outputImage"
-    value: Union[List[Image],Image]
+    value: Image
     type: str = "object"
-
-    @validator("type", pre=True, always=True)
-    def set_type_based_on_value(cls, value, values):
-        value = values.get('value')
-        if isinstance(value, Image):
-            return "object"
-        elif isinstance(value, list):
-            return "list"
 
     class Config:
         title = "Image"
 
 
-class KeepSideFalse(Config):
+class OutputCaption(Output):
+    name: Literal["outputCaption"] = "outputCaption"
+    value: str
+    type: Literal["string"] = "string"
+
+    class Config:
+        title = "Caption"
+
+
+class ImageCaptioningInputs(Inputs):
+    inputImage: InputImage
+
+
+class ConfigTemperature(Config):
+    """
+    Temperature variable is used to control the randomness of the predictions during decoding. Lower temperatures make the model's predictions more deterministic, while higher temperatures increase diversity and randomness in the generated captions.
+    """
+    name: Literal["Temperature"] = "Temperature"
+    value: float = Field(default=0.5, ge=0.2, le=1.0)
+    type: Literal["number"] = "number"
+    field: Literal["textInput"] = "textInput"
+
+    class Config:
+        title = "Temperature"
+
+
+class ConfigConcatenatedCaptionFalse(Config):
     name: Literal["False"] = "False"
     value: Literal[False] = False
     type: Literal["bool"] = "bool"
     field: Literal["option"] = "option"
 
     class Config:
-        title = "Disable"
+        title = "Disable Concatenating Caption"
 
 
-class KeepSideTrue(Config):
+class ConfigConcatenatedCaptionTrue(Config):
     name: Literal["True"] = "True"
     value: Literal[True] = True
     type: Literal["bool"] = "bool"
     field: Literal["option"] = "option"
 
     class Config:
-        title = "Enable"
+        title = "Enable Concatenating Caption"
 
 
-class KeepSideBBox(Config):
+class ConfigConcatenatedCaption(Config):
     """
-        Rotate image without catting off sides.
+    It refers to whether the output should be only caption or image concatenated with caption.
     """
-    name: Literal["KeepSide"] = "KeepSide"
-    value: Union[KeepSideTrue, KeepSideFalse]
+    name: Literal["ConcatenatedCaption"] = "ConcatenatedCaption"
+    value: Union[ConfigConcatenatedCaptionTrue, ConfigConcatenatedCaptionFalse]
     type: Literal["object"] = "object"
     field: Literal["dropdownlist"] = "dropdownlist"
 
     class Config:
-        title = "Keep Sides"
+        title = "Concatenating Caption"
 
 
-class Degree(Config):
-    """
-        Positive angles specify counterclockwise rotation while negative angles indicate clockwise rotation.
-    """
-    name: Literal["Degree"] = "Degree"
-    value: int = Field(ge=-359.0, le=359.0,default=0)
-    type: Literal["number"] = "number"
-    field: Literal["textInput"] = "textInput"
-    placeHolder: Literal["[-359, 359]"] = "[-359, 359]"
+class ConfigDeviceGPU(Config):
+    name: Literal["ConfigDeviceGPU"] = "ConfigDeviceGPU"
+    value: Literal["GPU"] = "GPU"
+    type: Literal["string"] = "string"
+    field: Literal["option"] = "option"
 
     class Config:
-        title = "Angle"
+        title = "GPU"
 
 
-class PackageInputs(Inputs):
-    inputImage: InputImage
+class ConfigDeviceCPU(Config):
+    name: Literal["ConfigDeviceCPU"] = "ConfigDeviceCPU"
+    value: Literal["CPU"] = "CPU"
+    type: Literal["string"] = "string"
+    field: Literal["option"] = "option"
+
+    class Config:
+        title = "CPU"
 
 
-class PackageConfigs(Configs):
-    degree: Degree
-    drawBBox: KeepSideBBox
+class ConfigDevice(Config):
+    """
+        It refers to whether the model should run on a CPU or a GPU.
+        You can select the device type for inference or training process.
+    """
+    name: Literal["ConfigDevice"] = "ConfigDevice"
+    value: Union[ConfigDeviceCPU, ConfigDeviceGPU]
+    type: Literal["object"] = "object"
+    field: Literal["dropdownlist"] = "dropdownlist"
+    restart: Literal[True] = True
+
+    class Config:
+        title = "Device"
 
 
-class PackageOutputs(Outputs):
+class ImageCaptioningConfigs(Configs):
+    configConcatenatedCaption: ConfigConcatenatedCaption
+    configDevice: ConfigDevice
+    configTemperature: ConfigTemperature
+
+
+class ImageCaptioningOutputs(Outputs):
     outputImage: OutputImage
+    outputCaption: OutputCaption
 
 
-class PackageRequest(Request):
-    inputs: Optional[PackageInputs]
-    configs: PackageConfigs
-
+class ImageCaptioningRequest(Request):
+    inputs: Optional[ImageCaptioningInputs]
+    configs: ImageCaptioningConfigs
     class Config:
         json_schema_extra = {
             "target": "configs"
         }
 
 
-class PackageResponse(Response):
-    outputs: PackageOutputs
+class ImageCaptioningResponse(Response):
+    outputs: ImageCaptioningOutputs
 
 
-class PackageExecutor(Config):
-    name: Literal["Package"] = "Package"
-    value: Union[PackageRequest, PackageResponse]
+class ImageCaptioningExecutor(Config):
+    name: Literal["ImageCaptioning"] = "ImageCaptioning"
+    value: Union[ImageCaptioningRequest, ImageCaptioningResponse]
     type: Literal["object"] = "object"
     field: Literal["option"] = "option"
 
     class Config:
-        title = "Package"
+        title = "Image Captioning"
         json_schema_extra = {
             "target": {
                 "value": 0
@@ -129,14 +164,14 @@ class PackageExecutor(Config):
 
 class ConfigExecutor(Config):
     name: Literal["ConfigExecutor"] = "ConfigExecutor"
-    value: Union[PackageExecutor]
-    type: Literal["executor"] = "executor"
+    value: Union[ImageCaptioningExecutor]
+    type:Literal["executor"] = "executor"
     field: Literal["dependentDropdownlist"] = "dependentDropdownlist"
 
     class Config:
         title = "Task"
         json_schema_extra = {
-            "target": "value"
+            "target" : "value"
         }
 
 
@@ -146,5 +181,5 @@ class PackageConfigs(Configs):
 
 class PackageModel(Package):
     configs: PackageConfigs
-    type: Literal["component"] = "component"
-    name: Literal["Package"] = "Package"
+    type: Literal["capsule"] = "capsule"
+    name: Literal["ImageCaptioning"] = "ImageCaptioning"
