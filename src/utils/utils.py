@@ -1,23 +1,51 @@
-
 import os
 import platform
 import tensorflow as tf
-
-from tensorflow.keras.models import Model
-from sdks.novavision.src.base.download import Download
-from tensorflow.keras.layers import GlobalAveragePooling2D
+from keras.layers import LSTM,GlobalAveragePooling2D,Bidirectional
+from keras.models import Model
 from sdks.novavision.src.base.application import Application
+from sdks.novavision.src.base.logger import LoggerManager
+from sdks.novavision.src.base.download import Download
+from keras.models import load_model
 
-weight_caption_path = '/storage/model.h5'
-weight_url = 'https://drive.google.com/file/d/1omwaXt8-Hnq4YLNizl3PFy0OE7EyzoOh/view?usp=sharing'
-feature_weight_path = '/storage/efficientnetb0_notop.h5'
-feature_weight_url = 'https://drive.google.com/file/d/1EeKtWayy7NHqozqeb4-dARX52o-jxq-6/view?usp=sharing'
-tokenizer_path = '/storage/tokenizer.json'
-tokenizer_url = 'https://drive.google.com/file/d/1rym52IjLNjwE--V1nHH65YuqDf6eP4Cl/view?usp=sharing'
-output_directory = '/storage/'
+loggerManager = LoggerManager()
+
+MODEL_ASSETS = {
+    'caption_model': {
+        'path': '/storage/model.h5',
+        'url': 'https://drive.google.com/file/d/1omwaXt8-Hnq4YLNizl3PFy0OE7EyzoOh/view?usp=sharing',
+        'name': 'Caption Model'
+    },
+    'feature_model_weights': {
+        'path': '/storage/efficientnetb0_notop.h5',
+        'url': 'https://drive.google.com/file/d/1EeKtWayy7NHqozqeb4-dARX52o-jxq-6/view?usp=sharing',
+        'name': 'Feature Extractor Weights'
+    },
+    'tokenizer': {
+        'path': '/storage/tokenizer.json',
+        'url': 'https://drive.google.com/file/d/1rym52IjLNjwE--V1nHH65YuqDf6eP4Cl/view?usp=sharing',
+        'name': 'Tokenizer'
+    }
+}
+
+def _download_asset_if_needed(asset_name):
+    """İstenen varlığı (model, tokenizer vb.) MODEL_ASSETS'ten bulur ve yoksa indirir."""
+    asset = MODEL_ASSETS[asset_name]
+    path = asset['path']
+    name = asset['name']
+    if not os.path.exists(path):
+        loggerManager.info(f"Downloading {name}...")
+        if Download.download_from_drive(asset['url'], path):
+            loggerManager.info(f"{name} download successful.")
+            return True
+        else:
+            loggerManager.error(f"{name} download failed.")
+            raise IOError(f"Failed to download required asset: {name}")
+    loggerManager.info(f"{name} already exists.")
+    return True
 
 def select_device(device='', batch_size=0, newline=True):
-    # device = None or 'cpu' or 0 or '0' or '0,1,2,3'
+    """TensorFlow için işlemci (CPU/GPU) seçer ve ayarlarını yapar."""
     s = f'TensorFlow Python-{platform.python_version()} tensorflow-{tf.__version__} '
     device = str(device).strip().lower().replace('gpu:', '').replace('none', '')
     cpu = device == 'cpu'
@@ -31,10 +59,6 @@ def select_device(device='', batch_size=0, newline=True):
 
     if not cpu and physical_devices:
         devices = device.split(',') if device else [str(i) for i in range(len(physical_devices))]
-        n = len(devices)
-        if n > 1 and batch_size > 0:
-            assert batch_size % n == 0, f'batch-size {batch_size} not multiple of GPU count {n}'
-
         space = ' ' * (len(s) + 1)
         for i, d in enumerate(devices):
             with tf.device(f'/device:GPU:{d}'):
@@ -52,54 +76,70 @@ def select_device(device='', batch_size=0, newline=True):
 
     if not newline:
         s = s.rstrip()
+    loggerManager.info(s.strip())
     return arg
 
-def load_models():
+def load_models(config):
+    """Gerekli tüm modelleri indirir, yükler ve kullanıma hazırlar."""
+    model = load_model('/storage/model.h5', compile=False)
+    model.summary()
     models = {}
-    model = {}
-    application = Application()
-    app_param_task = application.get_app_param("ImageCaptioning", "ConfigExecutor")
-    device = select_device('0' if tf.config.list_physical_devices('GPU') else 'cpu')
-    models["device"] = device
+    try:
+        
+        application = Application()
+        device_preference = application.get_param(config=config, name="ConfigDevice")
+        loggerManager.info(f"Device preference from UI: {device_preference}")
 
-    for i in app_param_task:
-        key = str(list(i.keys())[0])
-        config_device = i[key]['configs']['configDevice']['value']['value']
-        if not os.path.exists(weight_caption_path):
-            if Download.download_from_drive(weight_url, weight_caption_path) is not None:
-                print(f"{'model.h5'} model download successful.")
-            else:
-                print(f"{'model.h5'} model download failed.")
 
-        weight_path = weight_caption_path
-        tf.keras.mixed_precision.set_global_policy('float32')
-        model["model"] = tf.keras.models.load_model(weight_path)
 
-        if not os.path.exists(feature_weight_path):
-            if Download.download_from_drive(feature_weight_url, feature_weight_path) is not None:
-                print(f"{'efficientnetb0_notop.h5'} weights download successful.")
-            else:
-                print(f"{'efficientnetb0_notop.h5'} weights download failed.")
+        gpu_available = len(tf.config.list_physical_devices('GPU')) > 0
+        device_to_use = '0' if gpu_available and device_preference == "GPU" else 'cpu'
+        device_path = select_device(device_to_use)
+        models["device"] = device_path
 
-        efficientnet_path = feature_weight_path
+
+
+        _download_asset_if_needed('caption_model')
+        _download_asset_if_needed('feature_model_weights')
+        _download_asset_if_needed('tokenizer')
+        models["tokenizer_path"] = MODEL_ASSETS['tokenizer']['path']
+        
+
+
+        def legacy_lstm_patch(*args, **kwargs):
+            kwargs.pop('time_major', None)
+            kwargs.pop('implementation', None)
+            return LSTM(*args, **kwargs)
+
+        with tf.keras.utils.custom_object_scope({'LSTM': legacy_lstm_patch}):
+            caption_model = tf.keras.models.load_model(MODEL_ASSETS['caption_model']['path'])
+        
+        loggerManager.info("Caption model loaded successfully in compatibility mode.")
+                
+
+
         base_model = tf.keras.applications.EfficientNetB0(include_top=False, weights='imagenet')
-        base_model.load_weights(efficientnet_path, by_name=True)
+        base_model.load_weights(MODEL_ASSETS['feature_model_weights']['path'], by_name=True)
         x = GlobalAveragePooling2D()(base_model.output)
-        feature_ext_model = Model(inputs=base_model.input, outputs=x)
-        models["feature_ext"] = feature_ext_model
+        models["feature_ext"] = Model(inputs=base_model.input, outputs=x)
+        loggerManager.info("Feature extractor model loaded successfully.")
 
-        if not os.path.exists(tokenizer_path):
-            if Download.download_from_drive(tokenizer_url, tokenizer_path) is not None:
-                print("tokenizer download successful.")
+
+
+        with tf.device(device_path):
+            tf.keras.mixed_precision.set_global_policy('float32')
+            if device_preference == "GPU" and 'GPU' in device_path:
+                models['ModelGPU'] = caption_model
+                loggerManager.info("Caption model assigned to GPU.")
             else:
-                print("tokenizer download failed.")
+                models['ModelCPU'] = caption_model
+                loggerManager.info("Caption model assigned to CPU.")
 
-        with tf.device(device):
-            if config_device == "GPU" and 'GPU' in device:
-                tf.keras.mixed_precision.set_global_policy('float32')
-                models['ModelGPU'] = model["model"]
-            else:
-                tf.keras.mixed_precision.set_global_policy('float32')
-                models['ModelCPU'] = model["model"]
+        loggerManager.info("All models loaded and configured successfully!")
+        return models
 
-    return models
+    except Exception as e:
+        loggerManager.error(f"A critical error occurred during model loading: {e}")
+        import traceback
+        loggerManager.error(f"Traceback: {traceback.format_exc()}")
+        return {}

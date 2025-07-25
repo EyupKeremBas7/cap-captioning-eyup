@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
 
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../'))
 
 from sdks.novavision.src.media.image import Image
@@ -36,8 +37,8 @@ class ImageCaptioning(Capsule):
             self.model = self.bootstrap["ModelCPU"]
 
     @staticmethod
-    def bootstrap() -> dict:
-        model = load_models()
+    def bootstrap(config:dict) -> dict:
+        model = load_models(config)
         return model
 
     def load_tokenizer_from_json(self):
@@ -130,62 +131,14 @@ class ImageCaptioning(Capsule):
             img.value = np.array(new_img)
             return img, caption
 
-    # def caption_infer(self, img):
-    #     img_temp = img.value
-    #     height, width, _ = img.value.shape
-    #     image_array = img.value
-    #     image_array = np.expand_dims(image_array, axis=0)
-    #     image_array = preprocess_input(image_array)
-    #     features = self.base_model.predict(image_array, verbose=0)
-    #     tokenizer = self.load_tokenizer_from_json()
-    #     caption = self.predict_caption(features, self.model, tokenizer)
-    #     caption = caption.replace('startseq', '').replace('endseq', '').strip()
-    #
-    #     if self.concat:
-    #         height, width = img_temp.shape[:2]
-    #         font = cv2.FONT_HERSHEY_SIMPLEX
-    #         font_scale = 1
-    #         font_color = (0, 0, 0)
-    #         line_type = 2
-    #         max_line_width = width - 20
-    #         words = caption.split(' ')
-    #         lines = []
-    #         current_line = ""
-    #
-    #         for word in words:
-    #             test_line = f"{current_line} {word}".strip()
-    #             (text_width, text_height), _ = cv2.getTextSize(test_line, font, font_scale, line_type)
-    #             if text_width <= max_line_width:
-    #                 current_line = test_line
-    #             else:
-    #                 lines.append(current_line)
-    #                 current_line = word
-    #
-    #         lines.append(current_line)
-    #         text_height = cv2.getTextSize(lines[0], font, font_scale, line_type)[1]
-    #         line_spacing = 15
-    #         caption_area = 100
-    #         new_height = height + caption_area
-    #         new_img = np.zeros((new_height, width, 3), dtype=np.uint8)
-    #         new_img[:height, :] = img_temp
-    #         new_img[height:] = (255, 255, 255)
-    #         y = height + (caption_area - (text_height + line_spacing) * len(lines)) // 2 + text_height
-    #
-    #         for line in lines:
-    #             text_width, _ = cv2.getTextSize(line, font, font_scale, line_type)[0]
-    #             text_x = (width - text_width) // 2
-    #             cv2.putText(new_img, line, (text_x, y), font, font_scale, font_color, line_type)
-    #             y += text_height + line_spacing
-    #         img.value = new_img
-    #         return img, caption
 
     def run(self):
         self.image = Image.get_frame(img=self.image, redis_db=self.redis_db)
-        if not self.image: return None
         self.image, self.caption = self.caption_infer(self.image)
+        print(self.caption)
         self.image = Image.set_frame(img=self.image, package_uID=self.uID, redis_db=self.redis_db)
         packageModel = build_response(context=self)
-        return Response(model=packageModel, bootstrap=self.bootstrap).response()
+        return packageModel
 
 
 if "__main__" == __name__:
