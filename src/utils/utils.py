@@ -12,7 +12,7 @@ loggerManager = LoggerManager()
 
 MODEL_ASSETS = {
     'caption_model': {
-        'path': '/storage/model.h5',
+        'path': 'storage/model.h5',
         'url': 'https://drive.google.com/file/d/1omwaXt8-Hnq4YLNizl3PFy0OE7EyzoOh/view?usp=sharing',
         'name': 'Caption Model'
     },
@@ -29,7 +29,6 @@ MODEL_ASSETS = {
 }
 
 def _download_asset_if_needed(asset_name):
-    """İstenen varlığı (model, tokenizer vb.) MODEL_ASSETS'ten bulur ve yoksa indirir."""
     asset = MODEL_ASSETS[asset_name]
     path = asset['path']
     name = asset['name']
@@ -45,7 +44,6 @@ def _download_asset_if_needed(asset_name):
     return True
 
 def select_device(device='', batch_size=0, newline=True):
-    """TensorFlow için işlemci (CPU/GPU) seçer ve ayarlarını yapar."""
     s = f'TensorFlow Python-{platform.python_version()} tensorflow-{tf.__version__} '
     device = str(device).strip().lower().replace('gpu:', '').replace('none', '')
     cpu = device == 'cpu'
@@ -80,7 +78,6 @@ def select_device(device='', batch_size=0, newline=True):
     return arg
 
 def load_models(config):
-    """Gerekli tüm modelleri indirir, yükler ve kullanıma hazırlar."""
     model = load_model('/storage/model.h5', compile=False)
     model.summary()
     models = {}
