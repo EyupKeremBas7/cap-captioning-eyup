@@ -78,8 +78,10 @@ def select_device(device='', batch_size=0, newline=True):
     return arg
 
 def load_models(config):
+    """
     model = load_model('/storage/model.h5', compile=False)
     model.summary()
+    """
     models = {}
     try:
         
