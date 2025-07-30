@@ -12,7 +12,7 @@ loggerManager = LoggerManager()
 
 MODEL_ASSETS = {
     'caption_model': {
-        'path': '/storage/model.h5',
+        'path': 'storage/model.h5',
         'url': 'https://drive.google.com/file/d/1omwaXt8-Hnq4YLNizl3PFy0OE7EyzoOh/view?usp=sharing',
         'name': 'Caption Model'
     },
@@ -29,6 +29,8 @@ MODEL_ASSETS = {
 }
 
 def _download_asset_if_needed(asset_name):
+    path = MODEL_ASSETS[asset_name]['path']
+    name = MODEL_ASSETS[asset_name]['name']
     path = MODEL_ASSETS[asset_name]['path']
     name = MODEL_ASSETS[asset_name]['name']
     if not os.path.exists(path):
