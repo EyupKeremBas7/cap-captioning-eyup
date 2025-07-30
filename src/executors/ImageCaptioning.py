@@ -3,9 +3,9 @@ import os
 import sys
 import json
 import numpy as np
+import tensorflow as tf
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
-
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../'))
 
@@ -74,18 +74,61 @@ class ImageCaptioning(Capsule):
         return in_text
 
     def caption_infer(self, img):
-        img_temp = img.value
-        height, width, _ = img.value.shape
-        image_array = img.value
-        image_array = np.expand_dims(image_array, axis=0)
+        # Ensure we're working with the correct image data
+        if hasattr(img, 'value'):
+            img_temp = img.value
+        else:
+            img_temp = img
+        
+        # Convert to numpy array if it's not already
+        if not isinstance(img_temp, np.ndarray):
+            img_temp = np.array(img_temp)
+        
+        # Handle data type and format issues
+        if img_temp.dtype == np.float32 or img_temp.dtype == np.float64:
+            # If values are in [0,1] range, scale to [0,255]
+            if img_temp.max() <= 1.0:
+                img_temp = (img_temp * 255).astype(np.uint8)
+            else:
+                img_temp = img_temp.astype(np.uint8)
+        elif img_temp.dtype != np.uint8:
+            img_temp = img_temp.astype(np.uint8)
+        
+        # Handle single pixel or very small images
+        if len(img_temp.shape) == 2:
+            # Grayscale to RGB
+            img_temp = np.stack([img_temp] * 3, axis=-1)
+        elif len(img_temp.shape) == 3:
+            if img_temp.shape[2] == 1:
+                # Single channel to RGB
+                img_temp = np.repeat(img_temp, 3, axis=2)
+            elif img_temp.shape[0] == 1 and img_temp.shape[1] == 1:
+                # Single pixel case - expand to minimum processable size
+                img_temp = np.repeat(np.repeat(img_temp, 224, axis=0), 224, axis=1)
+        
+        # Ensure minimum size for processing
+        if img_temp.shape[0] < 10 or img_temp.shape[1] < 10:
+            from scipy.ndimage import zoom
+            scale_h = max(1, 224 / img_temp.shape[0])
+            scale_w = max(1, 224 / img_temp.shape[1])
+            img_temp = zoom(img_temp, (scale_h, scale_w, 1), order=1).astype(np.uint8)
+        
+        height, width = img_temp.shape[:2]
+        
+        # *** ÖNEMLİ: Eğitim kodlarına uygun preprocessing ***
+        # 1. Resize to 224x224 (model eğitiminde kullanılan boyut)
+        image_resized = tf.image.resize(img_temp, [224, 224])
+        
+        # 2. Batch dimension ekle ve EfficientNet preprocessing
+        image_array = tf.expand_dims(image_resized, axis=0)
         image_array = preprocess_input(image_array)
+        
         features = self.base_model.predict(image_array, verbose=0)
         tokenizer = self.load_tokenizer_from_json()
         caption = self.predict_caption(features, self.model, tokenizer)
         caption = caption.replace('startseq', '').replace('endseq', '').strip()
 
         if self.concat:
-            height, width = img_temp.shape[:2]
             font_size = 24
             font_color = (0, 0, 0)
             caption_area = 100
@@ -100,36 +143,61 @@ class ImageCaptioning(Capsule):
             lines = []
             current_line = ""
 
-            dummy_img = PILImage.new("RGB", (width, height))
+            # Create dummy image for text measurement
+            dummy_img = PILImage.new("RGB", (max(width, 100), max(height, 100)))
             dummy_draw = ImageDraw.Draw(dummy_img)
 
             for word in words:
                 test_line = f"{current_line} {word}".strip()
-                text_width, _ = dummy_draw.textsize(test_line, font=font)
+                
+                # *** textsize yerine textbbox kullan ***
+                bbox = dummy_draw.textbbox((0, 0), test_line, font=font)
+                text_width = bbox[2] - bbox[0]  # right - left
+                
                 if text_width <= max_line_width:
                     current_line = test_line
                 else:
-                    lines.append(current_line)
+                    if current_line:  # Avoid empty lines
+                        lines.append(current_line)
                     current_line = word
 
-            lines.append(current_line)
-            text_height = font.getsize(lines[0])[1]
-            line_spacing = 15
-            new_height = height + caption_area
-            new_img = PILImage.new("RGB", (width, new_height), (255, 255, 255))
-            new_img.paste(PILImage.fromarray(img_temp), (0, 0))
-            draw = ImageDraw.Draw(new_img)
+            if current_line:  # Add the last line if not empty
+                lines.append(current_line)
+            
+            if lines:  # Only proceed if we have lines to draw
+                # *** getsize yerine textbbox kullan ***
+                bbox = dummy_draw.textbbox((0, 0), lines[0], font=font)
+                text_height = bbox[3] - bbox[1]  # bottom - top
+                
+                line_spacing = 15
+                new_height = height + caption_area
+                new_img = PILImage.new("RGB", (width, new_height), (255, 255, 255))
+                
+                # Convert img_temp to PIL Image safely
+                pil_img = PILImage.fromarray(img_temp)
+                new_img.paste(pil_img, (0, 0))
+                draw = ImageDraw.Draw(new_img)
 
-            y = height + (caption_area - (text_height + line_spacing) * len(lines)) // 2
+                y = height + (caption_area - (text_height + line_spacing) * len(lines)) // 2
 
-            for line in lines:
-                text_width, _ = draw.textsize(line, font=font)
-                text_x = (width - text_width) // 2
-                draw.text((text_x, y), line, font=font, fill=font_color)
-                y += text_height + line_spacing
+                for line in lines:
+                    # *** textsize yerine textbbox kullan ***
+                    bbox = draw.textbbox((0, 0), line, font=font)
+                    text_width = bbox[2] - bbox[0]  # right - left
+                    text_x = max(0, (width - text_width) // 2)
+                    draw.text((text_x, y), line, font=font, fill=font_color)
+                    y += text_height + line_spacing
 
-            img.value = np.array(new_img)
-            return img, caption
+                img.value = np.array(new_img)
+            else:
+                # No text to add, keep original image
+                img.value = img_temp
+        else:
+            # Update the original image object with processed data
+            img.value = img_temp
+        
+        # *** Her durumda return et ***
+        return img, caption
 
 
     def run(self):
