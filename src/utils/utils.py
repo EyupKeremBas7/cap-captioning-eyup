@@ -31,8 +31,6 @@ MODEL_ASSETS = {
 def _download_asset_if_needed(asset_name):
     path = MODEL_ASSETS[asset_name]['path']
     name = MODEL_ASSETS[asset_name]['name']
-    path = MODEL_ASSETS[asset_name]['path']
-    name = MODEL_ASSETS[asset_name]['name']
     if not os.path.exists(path):
         loggerManager.info(f"Downloading {name}...")
         if Download.download_from_drive(MODEL_ASSETS[asset_name]['url'], path):
