@@ -12,7 +12,7 @@ loggerManager = LoggerManager()
 
 MODEL_ASSETS = {
     'caption_model': {
-        'path': 'storage/model.h5',
+        'path': '/storage/model.h5',
         'url': 'https://drive.google.com/file/d/1omwaXt8-Hnq4YLNizl3PFy0OE7EyzoOh/view?usp=sharing',
         'name': 'Caption Model'
     },
