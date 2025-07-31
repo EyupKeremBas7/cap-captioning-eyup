@@ -58,11 +58,10 @@ def select_device(device='', batch_size=0, newline=True):
         
         if physical_devices:
             try:
-                # GPU memory growth ayarla
+
                 for gpu in physical_devices:
                     tf.config.experimental.set_memory_growth(gpu, True)
                 
-                # İlk GPU'yu kullan
                 device_name = physical_devices[0].name.split('/')[-1] if '/' in physical_devices[0].name else physical_devices[0].name
                 s += f'GPU:0 ({device_name})\n'
                 arg = '/device:GPU:0'
@@ -89,51 +88,37 @@ def load_models(config):
         device_preference = application.get_param(config=config, name="ConfigDevice")
         loggerManager.info(f"Device preference from UI: {device_preference}")
 
-        # GPU durumunu kontrol et
+        
         gpu_available = len(tf.config.list_physical_devices('GPU')) > 0
         device_to_use = '0' if gpu_available and device_preference == "GPU" else 'cpu'
         device_path = select_device(device_to_use)
         models["device"] = device_path
 
-        # Asset'leri indir
+
         _download_asset_if_needed('caption_model')
         _download_asset_if_needed('feature_model_weights')
         _download_asset_if_needed('tokenizer')
         models["tokenizer_path"] = MODEL_ASSETS['tokenizer']['path']
 
-        # Legacy LSTM patch
-        def legacy_lstm_patch(*args, **kwargs):
-            kwargs.pop('time_major', None)
-            kwargs.pop('implementation', None)
-            return LSTM(*args, **kwargs)
-
-        # Caption model'i yükle
-        with tf.keras.utils.custom_object_scope({'LSTM': legacy_lstm_patch}):
-            caption_model = tf.keras.models.load_model(MODEL_ASSETS['caption_model']['path'])
+        caption_model = tf.keras.models.load_model(MODEL_ASSETS['caption_model']['path'])
         
         loggerManager.info("Caption model loaded successfully in compatibility mode.")
 
-        # Feature extractor model'i oluştur
+        
         base_model = tf.keras.applications.EfficientNetB0(include_top=False, weights='imagenet')
         base_model.load_weights(MODEL_ASSETS['feature_model_weights']['path'], by_name=True)
         x = GlobalAveragePooling2D()(base_model.output)
         models["feature_ext"] = Model(inputs=base_model.input, outputs=x)
         loggerManager.info("Feature extractor model loaded successfully.")
 
-        # *** ÖNEMLİ: Her iki durumda da model'i ata ***
         with tf.device(device_path):
             tf.keras.mixed_precision.set_global_policy('float32')
-            
-            # GPU varsa GPU'ya ata
             if device_preference == "GPU" and 'GPU' in device_path and gpu_available:
                 models['ModelGPU'] = caption_model
-                # CPU'ya da aynı model'i ata (fallback için)
                 models['ModelCPU'] = caption_model
                 loggerManager.info("Caption model assigned to GPU (CPU fallback available).")
             else:
-                # CPU'ya ata
                 models['ModelCPU'] = caption_model
-                # GPU key'ini de ekle (None ile)
                 models['ModelGPU'] = None
                 loggerManager.info("Caption model assigned to CPU.")
 
@@ -144,8 +129,6 @@ def load_models(config):
         loggerManager.error(f"A critical error occurred during model loading: {e}")
         import traceback
         loggerManager.error(f"Traceback: {traceback.format_exc()}")
-        
-        # Hata durumunda boş model döndür
         return {
             "device": "/device:CPU:0",
             "feature_ext": None,
