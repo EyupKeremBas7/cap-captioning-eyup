@@ -176,11 +176,7 @@ class ImageCaptioning(Capsule):
                 img.value = img_temp
         else:
             img.value = img_temp
-<<<<<<< HEAD
         return  caption
-=======
-        return img, caption
->>>>>>> 782a6a244742ecd3cbc9dc985e1721bf822d0b4b
 
 
     def run(self):
