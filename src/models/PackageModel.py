@@ -20,14 +20,6 @@ class InputImage(Input):
         title="Image"
 
 
-class OutputImage(Output):
-    name: Literal["outputImage"] = "outputImage"
-    value: Image
-    type: str = "object"
-
-    class Config:
-        title = "Image"
-
 
 class OutputCaption(Output):
     name: Literal["outputCaption"] = "outputCaption"
@@ -130,7 +122,6 @@ class ImageCaptioningConfigs(Configs):
 
 
 class ImageCaptioningOutputs(Outputs):
-    outputImage: OutputImage
     outputCaption: OutputCaption
 
 

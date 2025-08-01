@@ -3,7 +3,6 @@ from sdks.novavision.src.helper.package import PackageHelper
 from capsules.ImageCaptioning.src.models.PackageModel import ImageCaptioningExecutor, PackageModel, PackageConfigs, ImageCaptioningResponse, ImageCaptioningOutputs, OutputImage, ConfigExecutor, OutputCaption
 
 def build_response(context):
-    outputImage = OutputImage(value=context.image)
     outputCaption = OutputCaption(value=context.caption)
     captionOutputs = ImageCaptioningOutputs(outputImage=outputImage, outputCaption=outputCaption)
     captionResponse = ImageCaptioningResponse(outputs=captionOutputs)

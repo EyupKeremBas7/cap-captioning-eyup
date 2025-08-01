@@ -39,6 +39,7 @@ class ImageCaptioning(Capsule):
     @staticmethod
     def bootstrap(config:dict) -> dict:
         model = load_models(config)
+        model["sayac"] = 0
         return model
 
     def load_tokenizer_from_json(self):
@@ -74,19 +75,13 @@ class ImageCaptioning(Capsule):
         return in_text
 
     def caption_infer(self, img):
-        # Ensure we're working with the correct image data
         if hasattr(img, 'value'):
             img_temp = img.value
         else:
             img_temp = img
-        
-        # Convert to numpy array if it's not already
         if not isinstance(img_temp, np.ndarray):
             img_temp = np.array(img_temp)
-        
-        # Handle data type and format issues
         if img_temp.dtype == np.float32 or img_temp.dtype == np.float64:
-            # If values are in [0,1] range, scale to [0,255]
             if img_temp.max() <= 1.0:
                 img_temp = (img_temp * 255).astype(np.uint8)
             else:
@@ -94,19 +89,14 @@ class ImageCaptioning(Capsule):
         elif img_temp.dtype != np.uint8:
             img_temp = img_temp.astype(np.uint8)
         
-        # Handle single pixel or very small images
         if len(img_temp.shape) == 2:
-            # Grayscale to RGB
             img_temp = np.stack([img_temp] * 3, axis=-1)
         elif len(img_temp.shape) == 3:
             if img_temp.shape[2] == 1:
-                # Single channel to RGB
                 img_temp = np.repeat(img_temp, 3, axis=2)
             elif img_temp.shape[0] == 1 and img_temp.shape[1] == 1:
-                # Single pixel case - expand to minimum processable size
                 img_temp = np.repeat(np.repeat(img_temp, 224, axis=0), 224, axis=1)
         
-        # Ensure minimum size for processing
         if img_temp.shape[0] < 10 or img_temp.shape[1] < 10:
             from scipy.ndimage import zoom
             scale_h = max(1, 224 / img_temp.shape[0])
@@ -114,12 +104,8 @@ class ImageCaptioning(Capsule):
             img_temp = zoom(img_temp, (scale_h, scale_w, 1), order=1).astype(np.uint8)
         
         height, width = img_temp.shape[:2]
-        
-        # *** ÖNEMLİ: Eğitim kodlarına uygun preprocessing ***
-        # 1. Resize to 224x224 (model eğitiminde kullanılan boyut)
         image_resized = tf.image.resize(img_temp, [224, 224])
         
-        # 2. Batch dimension ekle ve EfficientNet preprocessing
         image_array = tf.expand_dims(image_resized, axis=0)
         image_array = preprocess_input(image_array)
         
@@ -143,37 +129,34 @@ class ImageCaptioning(Capsule):
             lines = []
             current_line = ""
 
-            # Create dummy image for text measurement
             dummy_img = PILImage.new("RGB", (max(width, 100), max(height, 100)))
             dummy_draw = ImageDraw.Draw(dummy_img)
 
             for word in words:
                 test_line = f"{current_line} {word}".strip()
                 
-                # *** textsize yerine textbbox kullan ***
                 bbox = dummy_draw.textbbox((0, 0), test_line, font=font)
-                text_width = bbox[2] - bbox[0]  # right - left
+                text_width = bbox[2] - bbox[0]
                 
                 if text_width <= max_line_width:
                     current_line = test_line
                 else:
-                    if current_line:  # Avoid empty lines
+                    if current_line:
                         lines.append(current_line)
                     current_line = word
 
-            if current_line:  # Add the last line if not empty
+            if current_line: 
                 lines.append(current_line)
             
-            if lines:  # Only proceed if we have lines to draw
-                # *** getsize yerine textbbox kullan ***
+            if lines:
                 bbox = dummy_draw.textbbox((0, 0), lines[0], font=font)
-                text_height = bbox[3] - bbox[1]  # bottom - top
+                text_height = bbox[3] - bbox[1]
                 
                 line_spacing = 15
                 new_height = height + caption_area
                 new_img = PILImage.new("RGB", (width, new_height), (255, 255, 255))
                 
-                # Convert img_temp to PIL Image safely
+
                 pil_img = PILImage.fromarray(img_temp)
                 new_img.paste(pil_img, (0, 0))
                 draw = ImageDraw.Draw(new_img)
@@ -181,29 +164,27 @@ class ImageCaptioning(Capsule):
                 y = height + (caption_area - (text_height + line_spacing) * len(lines)) // 2
 
                 for line in lines:
-                    # *** textsize yerine textbbox kullan ***
+                   
                     bbox = draw.textbbox((0, 0), line, font=font)
-                    text_width = bbox[2] - bbox[0]  # right - left
+                    text_width = bbox[2] - bbox[0]
                     text_x = max(0, (width - text_width) // 2)
                     draw.text((text_x, y), line, font=font, fill=font_color)
                     y += text_height + line_spacing
 
                 img.value = np.array(new_img)
             else:
-                # No text to add, keep original image
                 img.value = img_temp
         else:
-            # Update the original image object with processed data
             img.value = img_temp
-        
-        # *** Her durumda return et ***
-        return img, caption
+        return  caption
 
 
     def run(self):
         self.image = Image.get_frame(img=self.image, redis_db=self.redis_db)
-        self.image, self.caption = self.caption_infer(self.image)
-        print(self.caption)
+        self.bootstrap["sayac"] += 1
+        counter =  self.bootstrap["sayac"]
+        self.caption = self.caption_infer(self.image)
+        print(f"{counter}- {self.caption}")
         self.image = Image.set_frame(img=self.image, package_uID=self.uID, redis_db=self.redis_db)
         packageModel = build_response(context=self)
         return packageModel
