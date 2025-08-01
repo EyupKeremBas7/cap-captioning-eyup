@@ -46,11 +46,6 @@ class ConfigTemperature(Config):
     class Config:
         title = "Temperature"
 
-
-    class Config:
-        title = "Concatenating Caption"
-
-
 class ConfigDeviceGPU(Config):
     name: Literal["ConfigDeviceGPU"] = "ConfigDeviceGPU"
     value: Literal["GPU"] = "GPU"
