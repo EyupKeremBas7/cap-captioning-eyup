@@ -47,35 +47,6 @@ class ConfigTemperature(Config):
         title = "Temperature"
 
 
-class ConfigConcatenatedCaptionFalse(Config):
-    name: Literal["False"] = "False"
-    value: Literal[False] = False
-    type: Literal["bool"] = "bool"
-    field: Literal["option"] = "option"
-
-    class Config:
-        title = "Disable Concatenating Caption"
-
-
-class ConfigConcatenatedCaptionTrue(Config):
-    name: Literal["True"] = "True"
-    value: Literal[True] = True
-    type: Literal["bool"] = "bool"
-    field: Literal["option"] = "option"
-
-    class Config:
-        title = "Enable Concatenating Caption"
-
-
-class ConfigConcatenatedCaption(Config):
-    """
-    It refers to whether the output should be only caption or image concatenated with caption.
-    """
-    name: Literal["ConcatenatedCaption"] = "ConcatenatedCaption"
-    value: Union[ConfigConcatenatedCaptionTrue, ConfigConcatenatedCaptionFalse]
-    type: Literal["object"] = "object"
-    field: Literal["dropdownlist"] = "dropdownlist"
-
     class Config:
         title = "Concatenating Caption"
 
@@ -116,7 +87,6 @@ class ConfigDevice(Config):
 
 
 class ImageCaptioningConfigs(Configs):
-    configConcatenatedCaption: ConfigConcatenatedCaption
     configDevice: ConfigDevice
     configTemperature: ConfigTemperature
 

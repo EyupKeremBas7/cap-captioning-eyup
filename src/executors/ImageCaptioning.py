@@ -30,7 +30,6 @@ class ImageCaptioning(Capsule):
         self.image = self.request.get_param("inputImage")
         self.device = self.request.get_param("ConfigDevice")
         self.temperature = self.request.get_param("Temperature")
-        self.concat = self.request.get_param("ConcatenatedCaption")
         if self.device == "GPU" and "GPU" in self.select_device:
             self.model = self.bootstrap["ModelGPU"]
         else:
@@ -79,104 +78,36 @@ class ImageCaptioning(Capsule):
             img_temp = img.value
         else:
             img_temp = img
+        
         if not isinstance(img_temp, np.ndarray):
             img_temp = np.array(img_temp)
-        if img_temp.dtype == np.float32 or img_temp.dtype == np.float64:
-            if img_temp.max() <= 1.0:
+        
+        # Dtype dönüşümlerini sadeleştir
+        if img_temp.dtype != np.uint8:
+            if img_temp.dtype in [np.float32, np.float64] and img_temp.max() <= 1.0:
                 img_temp = (img_temp * 255).astype(np.uint8)
             else:
                 img_temp = img_temp.astype(np.uint8)
-        elif img_temp.dtype != np.uint8:
-            img_temp = img_temp.astype(np.uint8)
         
+        # Sadece gerekli shape kontrolü
         if len(img_temp.shape) == 2:
             img_temp = np.stack([img_temp] * 3, axis=-1)
-        elif len(img_temp.shape) == 3:
-            if img_temp.shape[2] == 1:
-                img_temp = np.repeat(img_temp, 3, axis=2)
-            elif img_temp.shape[0] == 1 and img_temp.shape[1] == 1:
-                img_temp = np.repeat(np.repeat(img_temp, 224, axis=0), 224, axis=1)
+        elif len(img_temp.shape) == 3 and img_temp.shape[2] == 1:
+            img_temp = np.repeat(img_temp, 3, axis=2)
         
-        if img_temp.shape[0] < 10 or img_temp.shape[1] < 10:
-            from scipy.ndimage import zoom
-            scale_h = max(1, 224 / img_temp.shape[0])
-            scale_w = max(1, 224 / img_temp.shape[1])
-            img_temp = zoom(img_temp, (scale_h, scale_w, 1), order=1).astype(np.uint8)
-        
-        height, width = img_temp.shape[:2]
+        # Direkt resize ve preprocess
         image_resized = tf.image.resize(img_temp, [224, 224])
-        
         image_array = tf.expand_dims(image_resized, axis=0)
         image_array = preprocess_input(image_array)
         
+        # Model inference
         features = self.base_model.predict(image_array, verbose=0)
         tokenizer = self.load_tokenizer_from_json()
         caption = self.predict_caption(features, self.model, tokenizer)
+        
+        # Temizle ve döndür
         caption = caption.replace('startseq', '').replace('endseq', '').strip()
-
-        if self.concat:
-            font_size = 24
-            font_color = (0, 0, 0)
-            caption_area = 100
-            max_line_width = width - 20
-
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except IOError:
-                font = ImageFont.load_default()
-
-            words = caption.split(' ')
-            lines = []
-            current_line = ""
-
-            dummy_img = PILImage.new("RGB", (max(width, 100), max(height, 100)))
-            dummy_draw = ImageDraw.Draw(dummy_img)
-
-            for word in words:
-                test_line = f"{current_line} {word}".strip()
-                
-                bbox = dummy_draw.textbbox((0, 0), test_line, font=font)
-                text_width = bbox[2] - bbox[0]
-                
-                if text_width <= max_line_width:
-                    current_line = test_line
-                else:
-                    if current_line:
-                        lines.append(current_line)
-                    current_line = word
-
-            if current_line: 
-                lines.append(current_line)
-            
-            if lines:
-                bbox = dummy_draw.textbbox((0, 0), lines[0], font=font)
-                text_height = bbox[3] - bbox[1]
-                
-                line_spacing = 15
-                new_height = height + caption_area
-                new_img = PILImage.new("RGB", (width, new_height), (255, 255, 255))
-                
-
-                pil_img = PILImage.fromarray(img_temp)
-                new_img.paste(pil_img, (0, 0))
-                draw = ImageDraw.Draw(new_img)
-
-                y = height + (caption_area - (text_height + line_spacing) * len(lines)) // 2
-
-                for line in lines:
-                   
-                    bbox = draw.textbbox((0, 0), line, font=font)
-                    text_width = bbox[2] - bbox[0]
-                    text_x = max(0, (width - text_width) // 2)
-                    draw.text((text_x, y), line, font=font, fill=font_color)
-                    y += text_height + line_spacing
-
-                img.value = np.array(new_img)
-            else:
-                img.value = img_temp
-        else:
-            img.value = img_temp
-        return  caption
+        return caption
 
 
     def run(self):
